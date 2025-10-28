@@ -1,0 +1,7 @@
+# Copy this file to `terraform.tfvars` and fill in real values.
+# Do NOT commit your real `terraform.tfvars` (already gitignored).
+
+# Database credentials
+db_user     = "CHANGE_ME"
+db_password = "CHANGE_ME"
+

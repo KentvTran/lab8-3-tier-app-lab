@@ -49,6 +49,6 @@ module "database" {
   db_subnet_ids = module.core.db_subnet_ids
   db_sg_id      = module.core.db_sg_id
   db_name       = "mydb"
-db_user       = var.db_user       
-  db_password   = var.db_password   
+  db_user       = var.db_user
+  db_password   = var.db_password
 }

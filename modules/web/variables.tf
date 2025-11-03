@@ -13,10 +13,6 @@ variable "web_instance_sg_id" {
   type        = string
 }
 
-variable "web_ami" {
-  description = "AMI ID for web tier instances"
-  type        = string
-}
 
 variable "web_instance_type" {
   description = "Instance type for web tier"
@@ -28,4 +24,9 @@ variable "key_name" {
   description = "EC2 key pair name"
   type        = string
   default     = ""
+}
+
+variable "vpc_id" {
+  description = "VPC ID for the web target group"
+  type        = string
 }

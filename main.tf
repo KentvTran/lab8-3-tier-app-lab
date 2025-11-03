@@ -29,8 +29,8 @@ module "web" {
   public_subnet_ids  = module.core.public_subnet_ids
   web_alb_sg_id      = module.core.web_alb_sg_id
   web_instance_sg_id = module.core.web_instance_sg_id
-  web_ami            = "ami-07860a2d7eb515d9a"
   web_instance_type  = "t3.micro"
+  vpc_id             = module.core.vpc_id
 }
 
 module "app" {
@@ -39,8 +39,8 @@ module "app" {
   private_subnet_ids = module.core.private_subnet_ids
   app_alb_sg_id      = module.core.app_alb_sg_id
   app_instance_sg_id = module.core.app_instance_sg_id
-  app_ami            = "ami-07860a2d7eb515d9a"
   app_instance_type  = "t3.micro"
+  vpc_id             = module.core.vpc_id
 }
 
 module "database" {

@@ -23,9 +23,9 @@ Internet → IGW → Web ALB → Web Tier (EC2)
 
 **Tier 1 - Web Layer:**
 - Public subnets (2 AZs)
-- Internet-facing ALB
+- Internet-facing ALB with health checks
 - Auto Scaling Group: 2-4 EC2 instances (t3.micro)
-- Nginx web servers
+- Python HTTP server (no external dependencies)
 
 **Tier 2 - Application Layer:**
 - Private subnets (2 AZs)
@@ -38,7 +38,7 @@ Internet → IGW → Web ALB → Web Tier (EC2)
 
 **Network:**
 - VPC: 10.0.0.0/16
-- 6 subnets across us-east-1a and us-east-1b
+- 6 subnets: Public (10.0.1-2/24), Private (10.0.3-4/24), Database (10.0.5-6/24)
 - Internet Gateway + NAT Gateway
 - 5 security groups with tier isolation
 
@@ -46,64 +46,112 @@ Internet → IGW → Web ALB → Web Tier (EC2)
 ```
 .
 ├── main.tf                # Root module
+├── outputs.tf             # Infrastructure outputs
 ├── .gitignore
 ├── README.md
 └── modules/
-    ├── core/              # VPC, subnets, security groups
-    ├── web/               # Web tier (ALB, ASG)
-    ├── app/               # App tier (ALB, ASG)
+    ├── core/              # VPC, subnets, security groups, routing
+    │   ├── main.tf
+    │   ├── variables.tf
+    │   └── outputs.tf
+    ├── web/               # Web tier (ALB, target groups, ASG)
+    │   ├── main.tf
+    │   ├── data.tf        # Amazon Linux 2 AMI lookup
+    │   ├── variables.tf
+    │   └── outputs.tf
+    ├── app/               # App tier (Internal ALB, ASG)
+    │   ├── main.tf
+    │   ├── data.tf
+    │   ├── variables.tf
+    │   └── outputs.tf
     └── database/          # RDS MySQL
+        ├── main.tf
+        ├── variables.tf
+        └── outputs.tf
 ```
 
 ## Quick Start
 
 ### Prerequisites
-- AWS Account with IAM permissions
+- AWS Account with IAM permissions (EC2, VPC, RDS, ELB)
 - Terraform >= 1.0
-- AWS CLI configured
+- AWS CLI configured (`aws configure`)
+- **Cost:** ~$0.60/day if left running
 
 ### Deploy
 ```bash
-# Get AMI for your region
-aws ec2 describe-images \
-  --region us-east-1 \
-  --owners amazon \
-  --filters "Name=name,Values=al2023-ami-2023*" \
-            "Name=architecture,Values=x86_64" \
-  --query "Images | sort_by(@, &CreationDate) | [-1].ImageId" \
-  --output text
-
-# Update AMI in main.tf, then deploy
+# Initialize and apply
 terraform init
 terraform plan
 terraform apply -auto-approve
 
-# IMPORTANT: Destroy after testing!
+# Get website URL (wait 3-5 minutes for health checks)
+terraform output web_alb_dns_name
+
+# Test website
+curl http://$(terraform output -raw web_alb_dns_name)
+# Expected: <h1>Web Tier Works!</h1><p>Instance: ip-10-0-x-xxx</p>
+```
+
+### Verify Deployment
+```bash
+# Check target health
+aws elbv2 describe-target-health \
+  --target-group-arn $(aws elbv2 describe-target-groups --names web-tg \
+    --query 'TargetGroups[0].TargetGroupArn' --output text) \
+  --query 'TargetHealthDescriptions[*].[Target.Id,TargetHealth.State]' \
+  --output table
+# Should show: healthy
+
+# List running instances
+aws ec2 describe-instances \
+  --filters "Name=instance-state-name,Values=running" \
+  --query 'Reservations[*].Instances[*].[InstanceId,PrivateIpAddress]' \
+  --output table
+```
+
+### Clean Up
+```bash
+# IMPORTANT: Destroy to avoid charges
 terraform destroy -auto-approve
 ```
+
+## Outputs
+
+After deployment, Terraform provides:
+- `web_alb_dns_name` - Public website URL
+- `app_alb_dns_name` - Internal app ALB
+- `database_endpoint` - RDS connection string
+- `vpc_id` - VPC ID
+- `public_subnet_ids` - Web tier subnets
+- `private_subnet_ids` - App tier subnets
 
 ## Key Features
 
 - Modular Terraform design
 - Multi-AZ high availability
-- Auto scaling (2-4 instances per tier)
+- Auto Scaling (2-4 instances per tier)
 - Security group isolation (least privilege)
-- Public + private subnet architecture
+- Public + private + database subnet separation
+- Dynamic AMI lookup (latest Amazon Linux 2)
 - Managed RDS database
 
 ## Configuration
 
 **Region:** us-east-1  
-**AMI:** Amazon Linux 2023 x86_64  
+**AMI:** Amazon Linux 2 (auto-detected)  
 **Instance Types:** t3.micro  
-**Database:** MySQL 5.7, db.t3.micro  
+**Database:** MySQL 5.7, db.t3.micro, 20GB  
+**Auto Scaling:** Min: 2, Max: 4, Desired: 2
 
 ## Security
 
-Five security groups implement strict tier isolation:
-1. **web-alb-sg** → HTTP from internet
-2. **web-instance-sg** → Traffic from web ALB only
-3. **app-alb-sg** → Traffic from web instances only
-4. **app-instance-sg** → Traffic from app ALB only
-5. **db-sg** → MySQL from app instances only
+Five security groups enforce strict tier isolation:
+
+1. **web-alb-sg** - HTTP (80) from internet
+2. **web-instance-sg** - HTTP (80) from web-alb-sg only
+3. **app-alb-sg** - HTTP (80) from web-instance-sg only
+4. **app-instance-sg** - HTTP (80) from app-alb-sg only
+5. **db-sg** - MySQL (3306) from app-instance-sg only
+
 

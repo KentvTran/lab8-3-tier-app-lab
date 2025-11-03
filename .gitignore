@@ -11,3 +11,13 @@ terraform.tfvars
 .history/
 credentials
 config
+
+crash.log
+.log
+override.tf
+_override.tf
+.terraformrc
+terraform.rc
+
+.DS_Store
+Thumbs.db
